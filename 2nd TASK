@@ -1,0 +1,128 @@
+    /* Automated report generation using python code*/
+
+
+
+
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl.chart import BarChart, Reference
+import matplotlib.pyplot as plt
+import datetime
+
+def generate_sales_report(input_csv_path, output_excel_path):
+    """
+    Generates an automated sales report in Excel format.
+
+    Args:
+        input_csv_path (str): Path to the input CSV file containing sales data.
+        output_excel_path (str): Path to save the generated Excel report.
+    """
+    try:
+        # --- 1. Data Acquisition & Processing ---
+        df = pd.read_csv(input_csv_path)
+
+        # Ensure 'Date' column is datetime type
+        df['Date'] = pd.to_datetime(df['Date'])
+
+        # Calculate total sales per region
+        regional_sales = df.groupby('Region')['Sales'].sum().reset_index()
+        regional_sales = regional_sales.sort_values(by='Sales', ascending=False)
+
+        # Calculate total sales overall
+        total_overall_sales = df['Sales'].sum()
+
+        # --- 2. Data Visualization (using matplotlib for a simple bar chart) ---
+        plt.figure(figsize=(8, 6))
+        plt.bar(regional_sales['Region'], regional_sales['Sales'], color='skyblue')
+        plt.xlabel('Region')
+        plt.ylabel('Total Sales')
+        plt.title('Total Sales by Region')
+        plt.grid(axis='y', linestyle='--')
+        chart_image_path = 'regional_sales_chart.png'
+        plt.savefig(chart_image_path)
+        plt.close() # Close the plot to free memory
+
+        # --- 3. Report Output (Excel using openpyxl) ---
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Sales Report"
+
+        # Report Title
+        ws['A1'] = "Sales Performance Report"
+        ws['A1'].font = Font(size=20, bold=True)
+        ws['A1'].alignment = Alignment(horizontal='center')
+        ws.merge_cells('A1:E1') # Merge cells for the title
+
+        # Report Date
+        ws['A3'] = f"Generated On: {datetime.date.today().strftime('%Y-%m-%d')}"
+        ws['A3'].font = Font(size=12, italic=True)
+
+        # Overall Summary
+        ws['A5'] = "Overall Sales Summary"
+        ws['A5'].font = Font(size=14, bold=True)
+        ws['A6'] = "Total Sales:"
+        ws['B6'] = total_overall_sales
+        ws['B6'].font = Font(bold=True)
+
+        # Regional Sales Table
+        ws['A8'] = "Sales by Region"
+        ws['A8'].font = Font(size=14, bold=True)
+
+        # Add headers for regional sales
+        headers = list(regional_sales.columns)
+        for col_num, header_text in enumerate(headers, 1):
+            cell = ws.cell(row=9, column=col_num, value=header_text)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                                 top=Side(style='thin'), bottom=Side(style='thin'))
+
+        # Add regional sales data
+        for r_idx, row in enumerate(dataframe_to_rows(regional_sales, index=False, header=False), 10):
+            for c_idx, value in enumerate(row, 1):
+                cell = ws.cell(row=r_idx, column=c_idx, value=value)
+                cell.border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                                     top=Side(style='thin'), bottom=Side(style='thin'))
+                if c_idx == 2: # Sales column
+                    cell.alignment = Alignment(horizontal='right')
+
+
+        # Add the chart image
+        from openpyxl.drawing.image import Image
+        img = Image(chart_image_path)
+        img.anchor = 'D9' # Anchor the image to cell D9
+        ws.add_image(img)
+
+        # Autofit column widths (basic approach, can be more robust)
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter # Get the column name
+            for cell in col:
+                try: # Necessary to avoid error on empty cells
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 2) * 1.2
+            ws.column_dimensions[column].width = adjusted_width
+
+        # Save the workbook
+        wb.save(output_excel_path)
+        print(f"Report generated successfully: {output_excel_path}")
+
+    except FileNotFoundError:
+        print(f"Error: Input CSV file not found at {input_csv_path}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+if __name__ == "__main__":
+    input_csv = "sales_data.csv"
+    output_excel = "sales_report.xlsx"
+    generate_sales_report(input_csv, output_excel)
+
+    # Clean up the chart image
+    import os
+    if os.path.exists('regional_sales_chart.png'):
+        os.remove('regional_sales_chart.png')
